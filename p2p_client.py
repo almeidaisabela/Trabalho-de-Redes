@@ -1,6 +1,7 @@
 import socket
 import threading
 import logging
+import json
 
 class P2PClient:
     def __init__(self, host: str, port: int):
@@ -15,6 +16,8 @@ class P2PClient:
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         
         self.running = False
+
+        self.connections = {}
 
     def start_server(self):
         """Faz o bind da porta e inicia a thread que escuta conexões."""
@@ -68,3 +71,20 @@ class P2PClient:
         self.running = False
         self.server_socket.close()
         self.logger.info("Servidor TCP fechado com sucesso.")
+
+    def connect_to_peer(self, peer_id, ip, port):
+        try:
+            sock = socket.create_connection(
+                (ip, port),
+                timeout=5
+            )
+            self.logger.info(
+                f"Outbound connected: {peer_id}"
+            )
+            return sock
+
+        except Exception as e:
+            self.logger.error(
+                f"Falha ao conectar em {peer_id}: {e}"
+            )
+            return None
