@@ -2,6 +2,7 @@ import socket
 import threading
 import logging
 import json
+from peer_connection import PeerConnection
 
 class P2PClient:
     def __init__(self, host: str, port: int):
@@ -39,32 +40,21 @@ class P2PClient:
         """Loop infinito para aceitar novas conexões de entrada (Inbound)."""
         while self.running:
             try:
-                # O código pausa aqui até que um novo peer tente se conectar
+                # Atualize dentro do _accept_connections (quando recebemos uma ligação Inbound)
                 conn, addr = self.server_socket.accept()
                 self.logger.info(f"Inbound connected: {addr[0]}:{addr[1]}")
-                
-                # Para cada nova conexão, abrimos uma Thread dedicada
-                client_thread = threading.Thread(target=self._handle_client, args=(conn, addr), daemon=True)
-                client_thread.start()
+
+                # O MEU_PEER_ID pode ser passado ou fixo por agora para testar
+                meu_peer_id = "kallebe@RedesUnB"
+
+                peer_conn = PeerConnection(sock=conn, addr=addr, my_peer_id=meu_peer_id, is_inbound=True)
+                self.connections[addr] = peer_conn
+                peer_conn.start() # A classe do Arthur agora trata de tudo!
                 
             except OSError:
                 if self.running:
                     self.logger.error("Erro no socket ao aceitar conexão.")
                 break
-
-    def _handle_client(self, conn, addr):
-        """Lida com as mensagens de uma conexão TCP específica."""
-        with conn:
-            try:
-                # Recebe os dados. O limite do protocolo é 32 KiB por linha
-                data = conn.recv(32768) 
-                if data:
-                    texto = data.decode('utf-8').strip()
-                    self.logger.debug(f"Dado recebido de {addr}: {texto}")
-            except Exception as e:
-                self.logger.error(f"Erro de comunicação com {addr}: {e}")
-            finally:
-                self.logger.info(f"Conexão encerrada com {addr}")
 
     def stop_server(self):
         """Encerra o servidor de forma limpa."""
@@ -74,14 +64,18 @@ class P2PClient:
 
     def connect_to_peer(self, peer_id, ip, port):
         try:
-            sock = socket.create_connection(
-                (ip, port),
-                timeout=5
-            )
-            self.logger.info(
-                f"Outbound connected: {peer_id}"
-            )
-            return sock
+            # Atualize no final do seu connect_to_peer (quando nos ligamos a alguém Outbound)
+            sock = socket.create_connection((ip, port), timeout=60)
+            self.logger.info(f"Outbound connected para o IP: {ip}:{port}")
+
+            meu_peer_id = "kallebe@RedesUnB"
+            peer_conn = PeerConnection(sock=sock, addr=(ip, port), my_peer_id=meu_peer_id, is_inbound=False)
+            peer_conn.remote_peer_id = peer_id
+
+            self.connections[peer_id] = peer_conn
+            peer_conn.start() # Como é is_inbound=False, isto vai disparar o _send_hello() automaticamente!
+
+            return peer_conn
 
         except Exception as e:
             self.logger.error(
