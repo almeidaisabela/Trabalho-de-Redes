@@ -1,7 +1,8 @@
 import logging
 import time
 from p2p_client import P2PClient
-from rendezvous_connection import RendezvousClient  # Importando a nova classe
+from rendezvous_connection import RendezvousClient
+from peer_table import PeerTable
 
 def configure_logs():
     logging.basicConfig(
@@ -34,8 +35,27 @@ def main():
         return
 
     # 3. Busca a lista de peers que já estão na rede
+    peer_table = PeerTable()
     peers_ativos = rdv.discover(namespace=meu_namespace)
+    peer_table.update(peers_ativos)
+    logger.info(peer_table.get_all())
     logger.info(f"Peers atualmente no Rendezvous: {peers_ativos}")
+
+    for peer in peers_ativos:
+    # evita conectar em si mesmo
+        if peer["name"] == meu_nome:
+            logger.info(f"Ignorando meu próprio registro: {peer['name']}")
+            continue
+
+        peer_id = f"{peer['name']}@{peer['namespace']}"
+        sock = client.connect_to_peer(
+            peer_id,
+            peer["ip"],
+            peer["port"]
+        )
+
+        if sock:
+            client.connections[peer_id] = sock
 
     try:
         # Loop principal provisório
