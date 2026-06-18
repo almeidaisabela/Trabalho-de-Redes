@@ -5,9 +5,18 @@ import json
 from peer_connection import PeerConnection
 
 class P2PClient:
-    def __init__(self, host: str, port: int):
+    def __init__(
+            self, 
+            host, 
+            port, 
+            my_peer_id,
+            peer_table
+    ):
         self.host = host
         self.port = port
+        self.my_peer_id = my_peer_id
+        self.peer_table = peer_table
+
         self.logger = logging.getLogger("PeerServer")
         
         # Criação do Socket TCP (IPv4, Stream)
@@ -44,11 +53,15 @@ class P2PClient:
                 conn, addr = self.server_socket.accept()
                 self.logger.info(f"Inbound connected: {addr[0]}:{addr[1]}")
 
-                # O MEU_PEER_ID pode ser passado ou fixo por agora para testar
-                meu_peer_id = "kallebe@RedesUnB"
-
-                peer_conn = PeerConnection(sock=conn, addr=addr, my_peer_id=meu_peer_id, is_inbound=True)
-                self.connections[addr] = peer_conn
+                peer_conn = PeerConnection(
+                    sock=conn,
+                    addr=addr,
+                    my_peer_id=self.my_peer_id,
+                    is_inbound=True,
+                    connections=self.connections,
+                    peer_table=self.peer_table,
+                    pending_pings=getattr(self, 'pending_pings', {})
+                )
                 peer_conn.start() # A classe do Arthur agora trata de tudo!
                 
             except OSError:
@@ -66,13 +79,20 @@ class P2PClient:
         try:
             # Atualize no final do seu connect_to_peer (quando nos ligamos a alguém Outbound)
             sock = socket.create_connection((ip, port), timeout=60)
+            sock.settimeout(None)
             self.logger.info(f"Outbound connected para o IP: {ip}:{port}")
 
-            meu_peer_id = "kallebe@RedesUnB"
-            peer_conn = PeerConnection(sock=sock, addr=(ip, port), my_peer_id=meu_peer_id, is_inbound=False)
+            peer_conn = PeerConnection(
+                sock=sock,
+                addr=(ip, port),
+                my_peer_id=self.my_peer_id,
+                is_inbound=False,
+                connections=self.connections,
+                peer_table=self.peer_table,
+                pending_pings=getattr(self, 'pending_pings', {})
+            )
             peer_conn.remote_peer_id = peer_id
 
-            self.connections[peer_id] = peer_conn
             peer_conn.start() # Como é is_inbound=False, isto vai disparar o _send_hello() automaticamente!
 
             return peer_conn

@@ -17,3 +17,10 @@ class PeerTable:
 
     def get(self, peer_id):
         return self.peers.get(peer_id)
+    
+    def update_status(self, peer_id, status):
+        if peer_id in self.peers:
+            self.peers[peer_id]["status"] = status
+
+    def mark_stale(self, peer_id):
+        self.update_status(peer_id, "STALE")

@@ -20,8 +20,8 @@ def main():
 
     # --- Configurações de Identidade do Peer ---
     meu_namespace = "RedesUnB"
-    meu_nome = "kallebe"
-    minha_porta = 4000
+    meu_nome = "isa"
+    minha_porta = 4002
     peer_table = PeerTable()
 
     # 1. Inicia o Servidor TCP local para escutar conexões
@@ -43,8 +43,10 @@ def main():
         return
 
     # 3. Busca a lista de peers que já estão na rede
+    peer_table = PeerTable()
     peers_ativos = rdv.discover(namespace=meu_namespace)
     peer_table.update(peers_ativos)
+    logger.info(peer_table.get_all())
     logger.info(f"Peers atualmente no Rendezvous: {peers_ativos}")
 
     # Cria o roteador de mensagens
@@ -64,30 +66,38 @@ def main():
     kam = KeepAliveManager(
         peer_table=peer_table, 
         send_function=envia_ping,
-        my_peer_id=f"{meu_nome}@{meu_namespace}"
-        )
+        my_peer_id=f"{meu_nome}@{meu_namespace}")
     kam.start()
     client.pending_pings = kam.pending_pings
     # --- FIM DO KEEP-ALIVE ---
 
     for peer in peers_ativos:
         # evita conectar em si mesmo
-        logger.info(f"Peer encontrado: {peer}")
         if peer["name"] == meu_nome:
             continue
 
         peer_id = f"{peer['name']}@{peer['namespace']}"
+        logger.info(f"Conectando em {peer_id}")
 
-        logger.info(
-            f"Tentando conectar em {peer_id} "
-            f"({peer['ip']}:{peer['port']})"
-        )
-        
-        sock = client.connect_to_peer(
-            peer_id,
-            peer["ip"],
-            peer["port"]
-        )
+        peer_conn = client.connect_to_peer(peer_id, "127.0.0.1", peer["port"])
+
+        if peer_conn:
+            logger.info(f"Conexão iniciada com {peer_id}. Aguardando handshake...")
+        else:
+            logger.warning(f"Falha ao conectar em {peer_id}.")
+    
+    time.sleep(2)
+
+    router.publish_global(
+        "Mensagem para todos!"
+    )
+
+    router.send_direct(
+        "kallebe@RedesUnB",
+        "Olá Kallebe! Teste SEND."
+    )
+
+    logger.info("Enviando mensagem de teste...")
 
     try:
         # Loop principal provisório
@@ -96,16 +106,8 @@ def main():
             
     except KeyboardInterrupt:
         logger.info("Encerrando aplicação via teclado (Ctrl+C)...")
-
-        # Encerramento gracioso: avisa cada peer antes de fechar
-        for peer_id, conn in list(client.connections.items()):
-            logger.info(f"Enviando BYE para {peer_id}...")
-            conn.send_bye()
-
-        time.sleep(0.5)  # Dá tempo para os BYEs saírem antes de fechar os sockets
-
         rdv.unregister(namespace=meu_namespace, name=meu_nome, port=minha_porta)
-        kam.stop()
+        kam.stop() # É uma boa prática parar a thread do Keep-Alive também
         client.stop_server()
 
 if __name__ == "__main__":
