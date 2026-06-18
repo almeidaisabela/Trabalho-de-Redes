@@ -1,11 +1,26 @@
+""""
+ARQUIVO PROVISÓRIO PARA FAZER TESTES
+"""
+
 import socket
 import threading
 import logging
 import json
 import uuid
+from datetime import datetime, timezone
+import time
 
 class PeerConnection:
-    def __init__(self, sock: socket.socket, addr, my_peer_id: str, is_inbound: bool = False):
+    def __init__(
+            self, 
+            sock: socket.socket, 
+            addr, 
+            my_peer_id: str, 
+            is_inbound: bool = False, 
+            connections=None,
+            peer_table=None,
+            pending_pings=None
+    ):
         """
         Gere uma ligação TCP individual com um peer.
         is_inbound = True significa que eles se ligaram a nós (somos o servidor).
@@ -15,16 +30,22 @@ class PeerConnection:
         self.addr = addr
         self.my_peer_id = my_peer_id
         self.is_inbound = is_inbound
+        self.connections = connections
+        self.peer_table = peer_table
+        self.pending_pings = pending_pings if pending_pings is not None else {}
+
         self.remote_peer_id = None
+
         self.logger = logging.getLogger(f"PeerConn-{addr[1]}")
         self.running = False
         self.connected = False
+        self.pending_acks = {}
 
     def start(self):
         """Inicia a thread de escuta contínua desta ligação."""
         self.running = True
-        thread = threading.Thread(target=self._listen_loop, daemon=True)
-        thread.start()
+        threading.Thread(target=self._listen_loop, daemon=True).start()
+        threading.Thread(target=self._check_ack_timeouts, daemon=True).start()
         
         # Se nós fomos o cliente que iniciou a ligação, temos de dizer HELLO primeiro!
         if not self.is_inbound:
@@ -35,7 +56,6 @@ class PeerConnection:
         try:
             data = json.dumps(msg_dict) + "\n"
             self.sock.sendall(data.encode('utf-8'))
-            self.logger.debug(f"Enviado para {self.remote_peer_id or self.addr}: {data.strip()}")
             return True
         except Exception as e:
             self.logger.error(f"Erro ao enviar mensagem para {self.remote_peer_id or self.addr}: {e}")
@@ -77,14 +97,32 @@ class PeerConnection:
             # --- Handshake ---
             if msg_type == "HELLO":
                 self.remote_peer_id = msg.get("peer_id")
-                self.logger.info(f"Recebido HELLO de {self.remote_peer_id}. A enviar HELLO_OK...")
+                if self.connections is not None:
+                    self.connections[self.remote_peer_id] = self
+                self.logger.info(
+                    f"Recebido HELLO de {self.remote_peer_id}. A enviar HELLO_OK..."
+                )
                 self._send_hello_ok()
                 self.connected = True
+                if self.peer_table:
+                    self.peer_table.update_status(
+                        self.remote_peer_id,
+                        "CONNECTED"
+                    )
                 
             elif msg_type == "HELLO_OK":
                 self.remote_peer_id = msg.get("peer_id")
-                self.logger.info(f"Handshake concluído com {self.remote_peer_id} (HELLO_OK recebido).")
+                if self.connections is not None:
+                    self.connections[self.remote_peer_id] = self
+                self.logger.info(
+                    f"Handshake concluído com {self.remote_peer_id} (HELLO_OK recebido)."
+                )
                 self.connected = True
+                if self.peer_table:
+                    self.peer_table.update_status(
+                        self.remote_peer_id,
+                        "CONNECTED"
+                    )
                 
             # --- Encerramento ---
             elif msg_type == "BYE":
@@ -95,6 +133,76 @@ class PeerConnection:
             elif msg_type == "BYE_OK":
                 self.logger.info(f"Despedida confirmada (BYE_OK) por {self.remote_peer_id}. A fechar ligação.")
                 self.stop()
+
+            elif msg_type == "SEND":
+                self.logger.info(
+                    f"[SEND] {msg['src']} -> {self.my_peer_id}: "
+                    f"{msg['payload']}"
+                )
+                if msg.get("require_ack"):
+                    ack = {
+                        "type": "ACK",
+                        "msg_id": msg["msg_id"],
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "ttl": 1
+                    }
+                    self.send_message(ack)
+
+            elif msg_type == "ACK":
+                msg_id = msg["msg_id"]
+                sent_at = self.pending_acks.pop(msg_id, None)
+                if sent_at:
+                    rtt = (datetime.now(timezone.utc) - sent_at).total_seconds() * 1000
+                    self.logger.info(f"ACK recebido para msg_id={msg_id} | RTT={rtt:.1f}ms")
+                else:
+                    self.logger.warning(f"ACK recebido para msg_id desconhecido={msg_id}")
+
+            elif msg_type == "PUB":
+                dst = msg.get("dst", "")
+
+                # Broadcast global
+                if dst == "*":
+                    self.logger.info(
+                        f"[PUB-GLOBAL] {msg['src']}: {msg['payload']}"
+                    )
+
+                # Broadcast para namespace
+                elif dst.startswith("#"):
+                    meu_namespace = self.my_peer_id.split("@")[1]
+                    namespace_destino = dst[1:]
+
+                    if meu_namespace == namespace_destino:
+                        self.logger.info(
+                            f"[PUB-{namespace_destino}] "
+                            f"{msg['src']}: {msg['payload']}"
+                        )
+            
+            elif msg_type == "PING":
+                self.logger.info(
+                    f"PING recebido de {self.remote_peer_id}"
+                )
+                pong = {
+                    "type": "PONG",
+                    "msg_id": msg["msg_id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "ttl": 1
+                }
+                self.send_message(pong)
+            
+            elif msg_type == "PONG":
+                msg_id = msg["msg_id"]
+    
+                # Tenta calcular RTT se houver um PING pendente com esse msg_id
+                # O KeepAliveManager precisa expor pending_pings para isso,
+                # então a forma mais simples é passar a referência no construtor
+                sent_at = self.pending_pings.pop(msg_id, None)
+                if sent_at:
+                    rtt = (datetime.now(timezone.utc) - sent_at).total_seconds() * 1000
+                    self.logger.info(f"PONG recebido de {self.remote_peer_id} | RTT={rtt:.1f}ms")
+                else:
+                    self.logger.info(f"PONG recebido de {self.remote_peer_id} (sem RTT — ping não registrado)")
+                if self.peer_table:
+                    self.peer_table.update_status(self.remote_peer_id, "CONNECTED")
                 
             # --- Futuro (Mensagens da Isabela e o seu PING) ---
             else:
@@ -150,7 +258,22 @@ class PeerConnection:
         """Encerra a thread e fecha o socket."""
         self.running = False
         self.connected = False
+        if self.connections is not None and self.remote_peer_id in self.connections:
+            del self.connections[self.remote_peer_id]
         try:
             self.sock.close()
         except:
             pass
+
+    def _check_ack_timeouts(self):
+        while self.running:
+            time.sleep(1)
+            now = datetime.now(timezone.utc)
+            for msg_id, sent_at in list(self.pending_acks.items()):
+                elapsed = (now - sent_at).total_seconds()
+                if elapsed > 5:
+                    self.logger.warning(
+                        f"Timeout: ACK não recebido para msg_id={msg_id} "
+                        f"após {elapsed:.1f}s"
+                    )
+                    self.pending_acks.pop(msg_id, None)

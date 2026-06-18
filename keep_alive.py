@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 
 class KeepAliveManager:
-    def __init__(self, peer_table, send_function):
+    def __init__(self, peer_table, send_function, my_peer_id):
         """
         Recebe a instância de PeerTable (da Isabela) e uma função genérica 
         para enviar mensagens TCP.
@@ -15,6 +15,8 @@ class KeepAliveManager:
         self.send_function = send_function 
         self.logger = logging.getLogger("KeepAlive")
         self.running = False
+        self.my_peer_id = my_peer_id
+        self.pending_pings = {}
 
     def start(self):
         """Inicia a thread de monitorização em segundo plano."""
@@ -34,14 +36,12 @@ class KeepAliveManager:
             self._send_pings()
 
     def _send_pings(self):
-        """Itera pela PeerTable e envia PINGs aos peers ativos."""
         peers_ativos = self.peer_table.get_all()
-        
+    
         for peer_id, dados in peers_ativos.items():
-            # Apenas envia PING para quem está listado como KNOWN (ou CONNECTED posteriormente)
-            if dados.get("status") == "KNOWN":
-                
-                # Monta o JSON exato exigido pela documentação do professor
+            if peer_id == self.my_peer_id:
+                continue
+            if dados.get("status") in ("KNOWN", "CONNECTED"):
                 ping_msg = {
                     "type": "PING",
                     "msg_id": str(uuid.uuid4()),
@@ -49,11 +49,9 @@ class KeepAliveManager:
                     "ttl": 1
                 }
                 
-                self.logger.debug(f"A enviar PING para {peer_id}...")
+                self.pending_pings[ping_msg["msg_id"]] = datetime.now(timezone.utc)  # <-- novo
                 
-                # Tenta enviar a mensagem. A função deve retornar True se conseguir.
-                sucesso = self.send_function(dados["ip"], dados["port"], ping_msg)
-                
+                sucesso = self.send_function(peer_id, ping_msg)
                 if not sucesso:
                     self.logger.warning(f"Falha ao alcançar {peer_id}. A marcar como STALE.")
-                    dados["status"] = "STALE" # Atualiza o estado na tabela 
+                    self.peer_table.mark_stale(peer_id)
