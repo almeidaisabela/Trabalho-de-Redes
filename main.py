@@ -41,8 +41,21 @@ def main():
     logger.info(peer_table.get_all())
     logger.info(f"Peers atualmente no Rendezvous: {peers_ativos}")
 
+    # --- INÍCIO DO KEEP-ALIVE ---
+    from keep_alive import KeepAliveManager
+
+    def envia_ping(ip_destino, porta_destino, mensagem):
+        for conn in client.connections.values():
+            if conn.addr == (ip_destino, porta_destino):
+                return conn.send_message(mensagem)
+        return False
+
+    kam = KeepAliveManager(peer_table=peer_table, send_function=envia_ping)
+    kam.start()
+    # --- FIM DO KEEP-ALIVE ---
+
     for peer in peers_ativos:
-    # evita conectar em si mesmo
+        # evita conectar em si mesmo
         if peer["name"] == meu_nome:
             logger.info(f"Ignorando meu próprio registro: {peer['name']}")
             continue
@@ -64,8 +77,8 @@ def main():
             
     except KeyboardInterrupt:
         logger.info("Encerrando aplicação via teclado (Ctrl+C)...")
-        # Boa prática: Remover o registro do Rendezvous ao sair
         rdv.unregister(namespace=meu_namespace, name=meu_nome, port=minha_porta)
+        kam.stop() # É uma boa prática parar a thread do Keep-Alive também
         client.stop_server()
 
 if __name__ == "__main__":
