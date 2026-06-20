@@ -1,3 +1,4 @@
+import sys
 import logging
 import time
 from p2p_client import P2PClient
@@ -32,11 +33,17 @@ def main():
     else:
         logger.warning("Ficheiro config.json não encontrado. A usar limite por omissão (5).")
 
-    # --- Configurações de Identidade do Peer ---
+    # --- Configurações de Identidade Dinâmicas ---
     meu_namespace = "RedesUnB"
-    meu_nome = "kallebe"
-    minha_porta = 4000
+    
+    # Pega o nome do terminal, se não passar, usa "kallebe"
+    meu_nome = sys.argv[1] if len(sys.argv) > 1 else "kallebe"
+    
+    # Pega a porta do terminal, se não passar, usa 4000
+    minha_porta = int(sys.argv[2]) if len(sys.argv) > 2 else 4000
+    
     peer_table = PeerTable()
+    # ---------------------------------------------
 
     # 1. Inicia o Servidor TCP local para escutar conexões
     client = P2PClient(
@@ -91,34 +98,11 @@ def main():
     interface.start()
     # --- FIM DA CLI ---
 
-    for peer in peers_ativos:
-        # evita conectar em si mesmo
-        logger.info(f"Peer encontrado: {peer}")
-
-    for peer in peers_ativos:
-        # evita conectar em si mesmo
-        logger.info(f"Peer encontrado: {peer}")
-        if peer["name"] == meu_nome:
-            continue
-
-        peer_id = f"{peer['name']}@{peer['namespace']}"
-
-        logger.info(
-            f"Tentando conectar em {peer_id} "
-            f"({peer['ip']}:{peer['port']})"
-        )
-        
-        sock = client.connect_to_peer(
-            peer_id,
-            peer["ip"],
-            peer["port"]
-        )
-
     ultimo_discover = time.time()
     intervalo_discover = 60 # Faz discover a cada 60 segundos
 
     try:
-        # Loop principal provisório (agora com manutenção de rede)
+        # Loop principal (agora com manutenção de rede do Arthur)
         while True:
             agora = time.time()
             
@@ -140,7 +124,8 @@ def main():
                 if dados["status"] == "STALE":
                     tentativas = dados.get("reconnect_attempts", 0)
                     proxima_tentativa = dados.get("next_reconnect", 0)
-                    limite_tentativas = max_reconnect
+                    
+                    limite_tentativas = max_reconnect # Usando variável do config.json
                     
                     if tentativas < limite_tentativas:
                         if agora >= proxima_tentativa:
@@ -156,25 +141,22 @@ def main():
                                 f"(Tentativa {tentativas}/{limite_tentativas}). "
                                 f"Próxima em {espera}s caso falhe."
                             )
-                            # Chama a função de conexão do seu cliente TCP
                             client.connect_to_peer(peer_id, dados["ip"], dados["port"])
                     
                     elif dados["status"] != "DEAD":
-                        # Desiste após o limite de tentativas para não ficar travando o loop
                         logger.warning(f"Desistindo de reconectar a {peer_id}. Marcando como DEAD.")
                         peer_table.update_status(peer_id, "DEAD")
 
-            time.sleep(1) # Pausa de 1 segundo para não fritar o processador
+            time.sleep(1) 
             
     except KeyboardInterrupt:
         logger.info("Encerrando aplicação via teclado (Ctrl+C)...")
 
-        # Encerramento gracioso: avisa cada peer antes de fechar
         for peer_id, conn in list(client.connections.items()):
             logger.info(f"Enviando BYE para {peer_id}...")
             conn.send_bye()
 
-        time.sleep(0.5)  # Dá tempo para os BYEs saírem antes de fechar os sockets
+        time.sleep(0.5) 
 
         rdv.unregister(namespace=meu_namespace, name=meu_nome, port=minha_porta)
         kam.stop()
@@ -182,4 +164,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
