@@ -66,9 +66,20 @@ def main():
         send_function=envia_ping,
         my_peer_id=f"{meu_nome}@{meu_namespace}"
         )
+    
     kam.start()
     client.pending_pings = kam.pending_pings
     # --- FIM DO KEEP-ALIVE ---
+
+    # --- INÍCIO DA CLI ---
+    from cli import CLI
+    interface = CLI(peer_table=peer_table, router=router, client=client)
+    interface.start()
+    # --- FIM DA CLI ---
+
+    for peer in peers_ativos:
+        # evita conectar em si mesmo
+        logger.info(f"Peer encontrado: {peer}")
 
     for peer in peers_ativos:
         # evita conectar em si mesmo
@@ -89,10 +100,57 @@ def main():
             peer["port"]
         )
 
+    ultimo_discover = time.time()
+    intervalo_discover = 60 # Faz discover a cada 60 segundos
+
     try:
-        # Loop principal provisório
+        # Loop principal provisório (agora com manutenção de rede)
         while True:
-            time.sleep(1)
+            agora = time.time()
+            
+            # 1. DISCOVER Periódico
+            if agora - ultimo_discover > intervalo_discover:
+                logger.info("Executando DISCOVER periódico...")
+                novos_peers = rdv.discover(namespace=meu_namespace)
+                peer_table.update(novos_peers)
+                ultimo_discover = agora
+                
+                # Tenta conectar com quem for novo e ainda não estiver conectado
+                for peer_id, dados in peer_table.get_all().items():
+                    if peer_id != f"{meu_nome}@{meu_namespace}" and dados["status"] == "KNOWN":
+                        if peer_id not in client.connections:
+                            client.connect_to_peer(peer_id, dados["ip"], dados["port"])
+
+            # 2. Reconexão Exponencial (Peers STALE)
+            for peer_id, dados in peer_table.get_all().items():
+                if dados["status"] == "STALE":
+                    tentativas = dados.get("reconnect_attempts", 0)
+                    proxima_tentativa = dados.get("next_reconnect", 0)
+                    limite_tentativas = 5
+                    
+                    if tentativas < limite_tentativas:
+                        if agora >= proxima_tentativa:
+                            tentativas += 1
+                            dados["reconnect_attempts"] = tentativas
+                            
+                            # Calcula o backoff: 1s, 2s, 4s, 8s, 16s...
+                            espera = 2 ** (tentativas - 1)
+                            dados["next_reconnect"] = agora + espera
+                            
+                            logger.info(
+                                f"Tentando reconectar a {peer_id} "
+                                f"(Tentativa {tentativas}/{limite_tentativas}). "
+                                f"Próxima em {espera}s caso falhe."
+                            )
+                            # Chama a função de conexão do seu cliente TCP
+                            client.connect_to_peer(peer_id, dados["ip"], dados["port"])
+                    
+                    elif dados["status"] != "DEAD":
+                        # Desiste após o limite de tentativas para não ficar travando o loop
+                        logger.warning(f"Desistindo de reconectar a {peer_id}. Marcando como DEAD.")
+                        peer_table.update_status(peer_id, "DEAD")
+
+            time.sleep(1) # Pausa de 1 segundo para não fritar o processador
             
     except KeyboardInterrupt:
         logger.info("Encerrando aplicação via teclado (Ctrl+C)...")
