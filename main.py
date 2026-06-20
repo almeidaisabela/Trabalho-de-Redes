@@ -5,6 +5,8 @@ from rendezvous_connection import RendezvousClient
 from peer_table import PeerTable
 from keep_alive import KeepAliveManager
 from message_router import MessageRouter
+import json  
+import os
 
 def configure_logs():
     logging.basicConfig(
@@ -17,6 +19,18 @@ def main():
     configure_logs()
     logger = logging.getLogger("Main")
     logger.info("Iniciando a aplicação Chat P2P...")
+
+    max_reconnect = 5 # Valor por omissão caso o ficheiro não exista
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r") as f:
+                config = json.load(f)
+                max_reconnect = config.get("max_reconnect_attempts", 5)
+            logger.info(f"Configuração carregada: max_reconnect_attempts = {max_reconnect}")
+        except Exception as e:
+            logger.warning(f"Erro ao ler config.json. A usar limite por omissão (5): {e}")
+    else:
+        logger.warning("Ficheiro config.json não encontrado. A usar limite por omissão (5).")
 
     # --- Configurações de Identidade do Peer ---
     meu_namespace = "RedesUnB"
@@ -126,7 +140,7 @@ def main():
                 if dados["status"] == "STALE":
                     tentativas = dados.get("reconnect_attempts", 0)
                     proxima_tentativa = dados.get("next_reconnect", 0)
-                    limite_tentativas = 5
+                    limite_tentativas = max_reconnect
                     
                     if tentativas < limite_tentativas:
                         if agora >= proxima_tentativa:

@@ -41,20 +41,66 @@ class CLI:
         if not text:
             return
 
+        # Divide o comando em no máximo 3 partes (comando, alvo, resto)
         parts = text.split(" ", 2)
         cmd = parts[0].lower()
 
         if cmd == "/quit":
             self.logger.info("Comando /quit recebido. A encerrar aplicação...")
-            # Envia um sinal (Ctrl+C) interno para a thread principal do main fechar tudo de forma limpa
+            # Envia um sinal interno para a thread principal do main fechar tudo
             os.kill(os.getpid(), signal.SIGINT)
 
+        # --- NOVO: /peers com filtros ---
         elif cmd == "/peers":
+            filtro = parts[1] if len(parts) > 1 else "*"
             peers = self.peer_table.get_all()
-            print("\n--- Tabela de Peers (Conhecidos) ---")
+            print(f"\n--- Tabela de Peers (Filtro: {filtro}) ---")
             for pid, dados in peers.items():
-                print(f"[{dados['status']}] {pid} - {dados['ip']}:{dados['port']}")
+                # Se for "*", mostra todos. Se começar com "#", filtra pelo namespace.
+                if filtro == "*" or (filtro.startswith("#") and pid.endswith(f"@{filtro[1:]}")):
+                    print(f"[{dados['status']}] {pid} - {dados['ip']}:{dados['port']}")
             print("------------------------------------\n")
+
+        # --- NOVO: /rtt ---
+        elif cmd == "/rtt":
+            peers = self.peer_table.get_all()
+            print("\n--- RTT Médio dos Peers ---")
+            for pid, dados in peers.items():
+                if pid != self.router.my_peer_id: # Ignora a si mesmo
+                    avg_rtt = self.peer_table.get_avg_rtt(pid)
+                    if avg_rtt > 0:
+                        print(f"{pid}: {avg_rtt:.2f} ms")
+                    else:
+                        print(f"{pid}: N/A (sem medições suficientes)")
+            print("---------------------------\n")
+
+        # --- NOVO: /reconnect ---
+        elif cmd == "/reconnect":
+            print("\n--- Forçando Reconexão Manual ---")
+            peers = self.peer_table.get_all()
+            for pid, dados in peers.items():
+                # Tenta conectar em todos que não são você mesmo e que não estão na lista de conexões ativas
+                if pid != self.router.my_peer_id and pid not in self.client.connections:
+                    print(f"Tentando reconectar a {pid}...")
+                    self.client.connect_to_peer(pid, dados["ip"], dados["port"])
+            print("Comandos de conexão disparados!\n")
+
+        # --- NOVO: /log <nível> ---
+        elif cmd == "/log":
+            if len(parts) > 1:
+                nivel_str = parts[1].upper()
+                niveis_validos = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+                if nivel_str in niveis_validos:
+                    novo_nivel = getattr(logging, nivel_str)
+                    # Altera o nível do logger global do Python
+                    logging.getLogger().setLevel(novo_nivel)
+                    for handler in logging.getLogger().handlers:
+                        handler.setLevel(novo_nivel)
+                    print(f"✓ Nível de log alterado com sucesso para {nivel_str}.")
+                else:
+                    print(f"⚠️ Nível inválido. Escolha entre: {', '.join(niveis_validos)}")
+            else:
+                print("⚠️ Uso incorreto. Tente: /log <DEBUG|INFO|WARNING|ERROR|CRITICAL>")
 
         elif cmd == "/conn":
             conns = self.client.connections
@@ -62,7 +108,7 @@ class CLI:
             if not conns:
                 print("Nenhuma ligação ativa neste momento.")
             for pid, conn in conns.items():
-                direcao = "Inbound" se conn.is_inbound else "Outbound"
+                direcao = "Inbound" if conn.is_inbound else "Outbound"
                 print(f"[{direcao}] {pid}")
             print("---------------------------\n")
 
@@ -99,8 +145,11 @@ class CLI:
             print("   /msg <peer_id> <mensagem>")
             print("   /pub * <mensagem>")
             print("   /pub #<namespace> <mensagem>")
-            print("   /peers")
+            print("   /peers [* | #namespace]")
             print("   /conn")
+            print("   /rtt")
+            print("   /reconnect")
+            print("   /log <Nível>")
             print("   /quit")
 
     def _run_prompt_toolkit(self):
