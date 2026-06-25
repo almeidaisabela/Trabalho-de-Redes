@@ -154,6 +154,11 @@ class PeerConnection:
                 if sent_at:
                     rtt = (datetime.now(timezone.utc) - sent_at).total_seconds() * 1000
                     self.logger.info(f"ACK recebido para msg_id={msg_id} | RTT={rtt:.1f}ms")
+                    
+                    # --- NOVA LINHA (Guarda o RTT na Tabela) ---
+                    if self.peer_table:
+                        self.peer_table.add_rtt(self.remote_peer_id, rtt)
+                        
                 else:
                     self.logger.warning(f"ACK recebido para msg_id desconhecido={msg_id}")
 
@@ -191,23 +196,20 @@ class PeerConnection:
             
             elif msg_type == "PONG":
                 msg_id = msg["msg_id"]
-    
-                # Tenta calcular RTT se houver um PING pendente com esse msg_id
-                # O KeepAliveManager precisa expor pending_pings para isso,
-                # então a forma mais simples é passar a referência no construtor
                 sent_at = self.pending_pings.pop(msg_id, None)
                 if sent_at:
                     rtt = (datetime.now(timezone.utc) - sent_at).total_seconds() * 1000
                     self.logger.info(f"PONG recebido de {self.remote_peer_id} | RTT={rtt:.1f}ms")
+                    
+                    # --- NOVA LINHA (Guarda o RTT na Tabela) ---
+                    if self.peer_table:
+                        self.peer_table.add_rtt(self.remote_peer_id, rtt)
+                        
                 else:
                     self.logger.info(f"PONG recebido de {self.remote_peer_id} (sem RTT — ping não registrado)")
+                
                 if self.peer_table:
                     self.peer_table.update_status(self.remote_peer_id, "CONNECTED")
-                
-            # --- Futuro (Mensagens da Isabela e o seu PING) ---
-            else:
-                self.logger.debug(f"Recebida mensagem do tipo {msg_type} de {self.remote_peer_id}")
-                # Aqui o sistema vai processar PING, PONG, SEND, ACK e PUB posteriormente
                 
         except json.JSONDecodeError:
             self.logger.error(f"Recebido JSON inválido ou corrompido: {raw_json}")
