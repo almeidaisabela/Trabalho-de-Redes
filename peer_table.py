@@ -13,7 +13,7 @@ class PeerTable:
                     "ip": peer["ip"],
                     "port": peer["port"],
                     "status": "KNOWN",
-                    "rtt_history": [] # <-- NOVA LISTA
+                    "rtt_history": [] 
                 }
             else:
                 # Se já existe, atualiza apenas o IP e a Porta caso ele tenha mudado de rede
