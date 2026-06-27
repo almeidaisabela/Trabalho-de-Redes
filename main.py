@@ -98,11 +98,11 @@ def main():
     interface.start()
     # --- FIM DA CLI ---
 
-    ultimo_discover = time.time()
+    ultimo_discover = 0
     intervalo_discover = 60 # Faz discover a cada 60 segundos
 
     try:
-        # Loop principal (agora com manutenção de rede do Arthur)
+        # Loop principal do programa. Fazemos discover periódico e reconexão exponencial
         while True:
             agora = time.time()
             
