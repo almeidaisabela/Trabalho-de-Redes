@@ -281,6 +281,8 @@ class PeerConnection:
         self.connected = False
         if self.connections is not None and self.remote_peer_id in self.connections:
             del self.connections[self.remote_peer_id]
+        if self.peer_table and self.remote_peer_id:
+            self.peer_table.mark_stale(self.remote_peer_id)
         try:
             self.sock.close()
         except:

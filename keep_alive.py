@@ -10,7 +10,7 @@ class KeepAliveManager:
     Sua única função é garantir que a lista de peers ativos não contenha "fantasmas" 
     (pessoas que já caíram, mas não avisaram).
     """
-    def __init__(self, peer_table, send_function, my_peer_id):
+    def __init__(self, peer_table, send_function, my_peer_id, ping_interval=30):
         """
         Recebe a instância de PeerTable (da Isabela) e uma função genérica 
         para enviar mensagens TCP.
@@ -25,6 +25,7 @@ class KeepAliveManager:
         self.logger = logging.getLogger("KeepAlive")
         self.running = False
         self.my_peer_id = my_peer_id
+        self.ping_interval = ping_interval
         
         # Guarda o horário exato que enviamos o PING para calcular a latência (RTT) depois
         self.pending_pings = {}
@@ -37,7 +38,7 @@ class KeepAliveManager:
         # Se rodasse na principal, o programa iria congelar esperando os 30 segundos!
         thread = threading.Thread(target=self._ping_loop, daemon=True)
         thread.start()
-        self.logger.info("Serviço Keep-Alive iniciado (PING a cada 30s).")
+        self.logger.info(f"Serviço Keep-Alive iniciado (PING a cada {self.ping_interval}s).")
 
     def stop(self):
         """Para o loop de verificação de forma segura."""
@@ -47,7 +48,7 @@ class KeepAliveManager:
         """Loop infinito que roda a cada 30 segundos."""
         # Enquanto o programa estiver vivo, ele dorme 30s, acorda, manda PING para todos, e dorme de novo.
         while self.running:
-            time.sleep(30)
+            time.sleep(self.ping_interval)
             self._send_pings()
 
     def _send_pings(self):
