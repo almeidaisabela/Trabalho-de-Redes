@@ -2,9 +2,9 @@
 
 Projeto final desenvolvido para a disciplina de Redes de Computadores. Trata-se de um cliente de Chat *Peer-to-Peer* (P2P) descentralizado, com suporte a mensagens diretas, broadcast em namespaces e mecanismo de resiliência (Keep-Alive).
 
-## Equipa (Grupo 07)
+## Equipe (Grupo 07)
 * **Arthur Martins Pereira de Souza** - Matrícula: 241004499
-* **Isabela [Sobrenome da Isabela]** - Matrícula: [000000000]
+* **Isabela de Almeida Pantaleão** - Matrícula: 242040346
 * **Rian Kallebe da Silva Lisbôa** - Matrícula: 242012000
 
 ## Arquitetura e Funcionalidades
