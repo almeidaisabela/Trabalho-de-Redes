@@ -5,6 +5,8 @@ from rendezvous_connection import RendezvousClient
 from peer_table import PeerTable
 from keep_alive import KeepAliveManager
 from message_router import MessageRouter
+import json
+import os
 
 def configure_logs():
     logging.basicConfig(
@@ -17,6 +19,35 @@ def main():
     configure_logs()
     logger = logging.getLogger("Main")
     logger.info("Iniciando a aplicação Chat P2P...")
+
+    max_reconnect = 5
+    ping_interval = 30
+
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r") as f:
+                config = json.load(f)
+                max_reconnect = config.get(
+                    "max_reconnect_attempts",
+                    max_reconnect
+                )
+                ping_interval = config.get(
+                    "ping_interval",
+                    ping_interval
+                )
+
+            logger.info(
+                "Configuração carregada: "
+                f"max_reconnect_attempts = {max_reconnect}, "
+                f"ping_interval = {ping_interval}"
+            )
+
+        except Exception as e:
+            logger.warning(
+                f"Erro ao ler config.json ({e}). "
+                "Usando valores padrão."
+            )
+
 
     # --- Configurações de Identidade do Peer ---
     meu_namespace = "RedesUnB"
@@ -64,9 +95,11 @@ def main():
         return False
 
     kam = KeepAliveManager(
-        peer_table=peer_table, 
+        peer_table=peer_table,
         send_function=envia_ping,
-        my_peer_id=f"{meu_nome}@{meu_namespace}")
+        my_peer_id=f"{meu_nome}@{meu_namespace}",
+        ping_interval=ping_interval
+    )
     kam.start()
     client.pending_pings = kam.pending_pings
     # --- FIM DO KEEP-ALIVE ---
