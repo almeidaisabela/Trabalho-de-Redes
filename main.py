@@ -1,3 +1,13 @@
+# ==============================================================================
+# Trabalho Final - Chat P2P
+# Disciplina: Redes de Computadores - T02
+# Grupo: 07
+# Membros da Equipe:
+# - Arthur Martins Pereira de Souza - Matrícula: 241004499
+# - Isabela de Almeida Pantaleão - Matrícula: 242040346
+# - Rian Kallebe da Silva Lisboa - Matrícula: 242012000
+# ==============================================================================
+
 import sys
 import logging
 import time

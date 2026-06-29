@@ -77,6 +77,10 @@ class P2PClient:
 
     def connect_to_peer(self, peer_id, ip, port):
         try:
+            
+            if ip == "167.250.40.65": 
+                ip = "127.0.0.1"
+
             # Estabelece a conexão TCP real e direta usando o IP e a Porta dinâmicos
             sock = socket.create_connection((ip, port), timeout=60)
             sock.settimeout(None)
