@@ -1,6 +1,19 @@
+import json
+import os
+
 class PeerTable:
     def __init__(self):
         self.peers = {}
+        
+        # --- NOVO: Lê o tamanho da janela de RTT do config.json ---
+        self.rtt_window_size = 10
+        if os.path.exists("config.json"):
+            try:
+                with open("config.json", "r") as f:
+                    config_data = json.load(f)
+                    self.rtt_window_size = config_data.get("rtt_window_size", 10)
+            except Exception:
+                pass
 
     def update(self, peers):
         """Atualiza a tabela com os peers retornados pelo DISCOVER."""
@@ -13,7 +26,7 @@ class PeerTable:
                     "ip": peer["ip"],
                     "port": peer["port"],
                     "status": "KNOWN",
-                    "rtt_history": [] # <-- NOVA LISTA
+                    "rtt_history": [] 
                 }
             else:
                 # Se já existe, atualiza apenas o IP e a Porta caso ele tenha mudado de rede
@@ -44,8 +57,8 @@ class PeerTable:
             historico = self.peers[peer_id].setdefault("rtt_history", [])
             historico.append(rtt)
             
-            # Mantém apenas os últimos 10 valores para a média ser sempre recente
-            if len(historico) > 10:
+            # Mantém apenas os valores definidos no config.json para a média ser sempre recente
+            if len(historico) > self.rtt_window_size:
                 historico.pop(0)
 
     def get_avg_rtt(self, peer_id):

@@ -1,3 +1,22 @@
 {
-  "max_reconnect_attempts": 5
+  "name": "Grupo7",
+  "namespace": "CIC",
+  "local_ip": "0.0.0.0",
+  "local_port": 4000,
+  "rendezvous_ip": "192.168.50.10",
+  "rendezvous_port": 8080,
+  "ttl": 300,
+  "keep_alive_interval": 5.0,
+  "unresponsive_threshold": 3,
+  "rtt_window_size": 100,
+  "ack_timeout": 5.0,
+  "bye_ok_timeout": 1.0,
+  "reconnect_base_delay": 1.0,
+  "reconnect_max_delay": 60.0,
+  "max_reconnect_attempts": 5,
+  "discovery_delay": 5,
+  "discovery_termination_timeout": 1.0,
+  "response_timeout": 5.0,
+  "session_renewal_threshold": 60.0,
+  "log_level": "CRITICAL"
 }

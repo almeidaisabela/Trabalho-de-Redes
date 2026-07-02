@@ -3,6 +3,8 @@ import logging
 import os
 import signal
 
+# Tenta importar uma biblioteca avançada para interfaces de terminal.
+# O bloco try/except garante que o programa não quebre se o usuário não tiver instalado.
 try:
     from prompt_toolkit import PromptSession
     from prompt_toolkit.patch_stdout import patch_stdout
@@ -11,10 +13,16 @@ except ImportError:
     PROMPT_TOOLKIT_AVAILABLE = False
 
 class CLI:
+    """
+    Command Line Interface (CLI).
+    Traduz o que o usuário digita no terminal em ações reais do sistema P2P.
+    """
     def __init__(self, peer_table, router, client):
-        self.peer_table = peer_table
-        self.router = router
-        self.client = client
+        # A CLI precisa ter acesso a tudo para poder comandar o sistema
+        self.peer_table = peer_table # Para ver quem está online (comandos /peers, /rtt)
+        self.router = router         # Para enviar mensagens (comandos /msg, /pub)
+        self.client = client         # Para gerenciar as conexões TCP (comandos /conn, /reconnect)
+        
         self.logger = logging.getLogger("CLI")
         self.running = False
 
@@ -22,6 +30,8 @@ class CLI:
         """Inicia a thread de interface com o utilizador."""
         self.running = True
         
+        # Inicia a interface em uma Thread separada. 
+        # Isso permite que você digite comandos enquanto o servidor escuta mensagens de rede ao mesmo tempo.
         if PROMPT_TOOLKIT_AVAILABLE:
             self.logger.info("Iniciando CLI avançada com prompt_toolkit...")
             thread = threading.Thread(target=self._run_prompt_toolkit, daemon=True)
@@ -36,22 +46,28 @@ class CLI:
         thread.start()
 
     def _process_command(self, text):
-        """Interpreta os comandos escritos pelo utilizador."""
+        """
+        O 'Cérebro' da interface. Pega o texto bruto e decide o que fazer.
+        Atua como um grande roteador de comandos.
+        """
         text = text.strip()
         if not text:
             return
 
-        # Divide o comando em no máximo 3 partes (comando, alvo, resto)
+        # Divide o comando em no máximo 3 partes para facilitar a leitura.
+        # Ex: "/msg kallebe Olá, tudo bem?" vira ["/msg", "kallebe", "Olá, tudo bem?"]
         parts = text.split(" ", 2)
         cmd = parts[0].lower()
 
+        # --- Comandos de Sistema ---
         if cmd == "/quit":
             self.logger.info("Comando /quit recebido. A encerrar aplicação...")
-            # Envia um sinal interno para a thread principal do main fechar tudo
+            # Envia um sinal (SIGINT - como se fosse um Ctrl+C) para o sistema operacional matar o processo graciosamente.
             os.kill(os.getpid(), signal.SIGINT)
 
-        # --- NOVO: /peers com filtros ---
+        # --- Comandos de Visualização de Rede ---
         elif cmd == "/peers":
+            # Lista quem está registrado na "lista telefônica"
             filtro = parts[1] if len(parts) > 1 else "*"
             peers = self.peer_table.get_all()
             print(f"\n--- Tabela de Peers (Filtro: {filtro}) ---")
@@ -61,12 +77,12 @@ class CLI:
                     print(f"[{dados['status']}] {pid} - {dados['ip']}:{dados['port']}")
             print("------------------------------------\n")
 
-        # --- NOVO: /rtt ---
         elif cmd == "/rtt":
+            # Exibe a latência (Round Trip Time) que foi calculada lá pelo PING/PONG
             peers = self.peer_table.get_all()
             print("\n--- RTT Médio dos Peers ---")
             for pid, dados in peers.items():
-                if pid != self.router.my_peer_id: # Ignora a si mesmo
+                if pid != self.router.my_peer_id: 
                     avg_rtt = self.peer_table.get_avg_rtt(pid)
                     if avg_rtt > 0:
                         print(f"{pid}: {avg_rtt:.2f} ms")
@@ -85,14 +101,13 @@ class CLI:
                     self.client.connect_to_peer(pid, dados["ip"], dados["port"])
             print("Comandos de conexão disparados!\n")
 
-        # --- NOVO: /log <nível> ---
+        # --- log <nível> ---
         elif cmd == "/log":
             if len(parts) > 1:
                 nivel_str = parts[1].upper()
                 niveis_validos = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
                 if nivel_str in niveis_validos:
                     novo_nivel = getattr(logging, nivel_str)
-                    # Altera o nível do logger global do Python
                     logging.getLogger().setLevel(novo_nivel)
                     for handler in logging.getLogger().handlers:
                         handler.setLevel(novo_nivel)
@@ -112,7 +127,9 @@ class CLI:
                 print(f"[{direcao}] {pid}")
             print("---------------------------\n")
 
+        # --- Comandos de Ação (Mensagens) ---
         elif cmd == "/msg":
+            # Manda para o 'MessageRouter' fazer o envio Unicast
             if len(parts) < 3:
                 print("⚠️ Uso incorreto. Tente: /msg <peer_id> <sua mensagem>")
             else:
@@ -125,6 +142,7 @@ class CLI:
                     print(f"❌ Erro: Não existe uma ligação ativa com {peer_id}.")
 
         elif cmd == "/pub":
+            # Manda para o 'MessageRouter' fazer o envio Multicast/Broadcast
             if len(parts) < 3:
                 print("⚠️ Uso incorreto. Tente: /pub * <msg> OU /pub #<namespace> <msg>")
             else:
@@ -166,9 +184,11 @@ class CLI:
                 break
 
     def _run_basic(self):
-        """Loop de interface básico usando o input() nativo."""
+        """Loop de interface básico usando o input() nativo do Python."""
         while self.running:
             try:
+                # Funciona, mas se chegar um print() de outra thread,
+                # ele corta a palavra "Você > " no meio e bagunça o terminal.
                 text = input('Você > ')
                 self._process_command(text)
             except (KeyboardInterrupt, EOFError):
