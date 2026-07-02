@@ -72,6 +72,7 @@ class CLI:
             peers = self.peer_table.get_all()
             print(f"\n--- Tabela de Peers (Filtro: {filtro}) ---")
             for pid, dados in peers.items():
+                # Se for "*", mostra todos. Se começar com "#", filtra pelo namespace.
                 if filtro == "*" or (filtro.startswith("#") and pid.endswith(f"@{filtro[1:]}")):
                     print(f"[{dados['status']}] {pid} - {dados['ip']}:{dados['port']}")
             print("------------------------------------\n")
@@ -89,19 +90,19 @@ class CLI:
                         print(f"{pid}: N/A (sem medições suficientes)")
             print("---------------------------\n")
 
+        # --- NOVO: /reconnect ---
         elif cmd == "/reconnect":
-            # Força o sistema a tentar se ligar ativamente a todos os peers conhecidos
             print("\n--- Forçando Reconexão Manual ---")
             peers = self.peer_table.get_all()
             for pid, dados in peers.items():
+                # Tenta conectar em todos que não são você mesmo e que não estão na lista de conexões ativas
                 if pid != self.router.my_peer_id and pid not in self.client.connections:
                     print(f"Tentando reconectar a {pid}...")
                     self.client.connect_to_peer(pid, dados["ip"], dados["port"])
             print("Comandos de conexão disparados!\n")
 
+        # --- log <nível> ---
         elif cmd == "/log":
-            # Altera o nível de detalhe do que aparece na tela em tempo real
-            # Útil para debugar o sistema sem precisar reiniciar
             if len(parts) > 1:
                 nivel_str = parts[1].upper()
                 niveis_validos = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -117,7 +118,6 @@ class CLI:
                 print("⚠️ Uso incorreto. Tente: /log <DEBUG|INFO|WARNING|ERROR|CRITICAL>")
 
         elif cmd == "/conn":
-            # Mostra quem está fisicamente conectado via TCP agora
             conns = self.client.connections
             print("\n--- Conexões TCP Ativas ---")
             if not conns:
@@ -159,20 +159,23 @@ class CLI:
                 else:
                     print("⚠️ Destino inválido para /pub. Use '*' ou '#namespace'.")
         else:
-            # Menu de Ajuda (Fallback)
             print("⚠️ Comando desconhecido. Comandos disponíveis:")
-            # ... (prints de ajuda omitidos na leitura para economizar tempo)
+            print("   /msg <peer_id> <mensagem>")
+            print("   /pub * <mensagem>")
+            print("   /pub #<namespace> <mensagem>")
+            print("   /peers [* | #namespace]")
+            print("   /conn")
+            print("   /rtt")
+            print("   /reconnect")
+            print("   /log <Nível>")
+            print("   /quit")
 
-    # --- Loops de Interface ---
-    
     def _run_prompt_toolkit(self):
         """Loop de interface avançada que protege a zona de input contra quebras de ecrã."""
         session = PromptSession()
         while self.running:
             try:
-                # O patch_stdout cria uma 'camada' por cima da tela. 
-                # Se uma mensagem de log ou de chat chegar enquanto o usuário digita, 
-                # ela é impressa acima da linha de input, sem apagar o que já foi digitado!
+                # O patch_stdout gere os logs de forma mágica para não destruírem a escrita
                 with patch_stdout():
                     text = session.prompt('Você > ')
                 self._process_command(text)

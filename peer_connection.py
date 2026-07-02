@@ -1,4 +1,3 @@
-
 import socket
 import threading
 import logging
@@ -6,6 +5,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 import time
+import os
 
 class PeerConnection:
     def __init__(
@@ -41,6 +41,16 @@ class PeerConnection:
         
         # Dicionário para rastrear mensagens enviadas que aguardam recibo de leitura (ACK)
         self.pending_acks = {}
+
+        # --- NOVO: Lê o tempo limite de ACK do config.json ---
+        self.ack_timeout = 5.0
+        if os.path.exists("config.json"):
+            try:
+                with open("config.json", "r") as f:
+                    config_data = json.load(f)
+                    self.ack_timeout = config_data.get("ack_timeout", 5.0)
+            except Exception:
+                pass
 
     def start(self):
         """Inicia a thread de escuta contínua desta ligação."""
@@ -149,10 +159,7 @@ class PeerConnection:
 
             # --- Troca de Mensagens Diretas ---
             elif msg_type == "SEND":
-                self.logger.info(
-                    f"[SEND] {msg['src']} -> {self.my_peer_id}: "
-                    f"{msg['payload']}"
-                )
+                print(f"\n [Privado de {msg['src']}]: {msg['payload']}")
                 # Se a mensagem exige recibo, envia um ACK de volta
                 if msg.get("require_ack"):
                     ack = {
@@ -184,9 +191,7 @@ class PeerConnection:
 
                 # O asterisco significa mensagem para a rede inteira
                 if dst == "*":
-                    self.logger.info(
-                        f"[PUB-GLOBAL] {msg['src']}: {msg['payload']}"
-                    )
+                    print(f"\n [Global - {msg['src']}]: {msg['payload']}")
 
                 # Hashtag significa mensagem para um grupo específico (namespace)
                 elif dst.startswith("#"):
@@ -194,10 +199,7 @@ class PeerConnection:
                     namespace_destino = dst[1:]
 
                     if meu_namespace == namespace_destino:
-                        self.logger.info(
-                            f"[PUB-{namespace_destino}] "
-                            f"{msg['src']}: {msg['payload']}"
-                        )
+                        print(f"\n [Grupo #{namespace_destino} - {msg['src']}]: {msg['payload']}")
             
             # --- Checagem de Latência e Vida útil (Ping/Pong) ---
             elif msg_type == "PING":
@@ -299,7 +301,7 @@ class PeerConnection:
             # Transforma em lista para não dar erro de mudar o dicionário enquanto lê
             for msg_id, sent_at in list(self.pending_acks.items()):
                 elapsed = (now - sent_at).total_seconds()
-                if elapsed > 5:
+                if elapsed > self.ack_timeout:
                     self.logger.warning(
                         f"Timeout: ACK não recebido para msg_id={msg_id} "
                         f"após {elapsed:.1f}s"
