@@ -42,7 +42,7 @@ class PeerConnection:
         # Dicionário para rastrear mensagens enviadas que aguardam recibo de leitura (ACK)
         self.pending_acks = {}
 
-        # --- NOVO: Lê o tempo limite de ACK do config.json ---
+        # Lê o tempo limite de ACK do config.json
         self.ack_timeout = 5.0
         if os.path.exists("config.json"):
             try:
