@@ -1,7 +1,6 @@
 import socket
 import threading
 import logging
-import json
 from peer_connection import PeerConnection
 
 class P2PClient:
