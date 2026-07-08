@@ -18,6 +18,7 @@ from keep_alive import KeepAliveManager
 from message_router import MessageRouter
 import json  
 import os
+from cli import CLI
 
 def configure_logs(log_level_str):
     # Converte a string do JSON para o nível real do logging (ex: CRITICAL, INFO, DEBUG)
@@ -129,7 +130,6 @@ def main():
     # --- FIM DO KEEP-ALIVE ---
 
     # --- INÍCIO DA CLI ---
-    from cli import CLI
     interface = CLI(peer_table=peer_table, router=router, client=client)
     interface.start()
     # --- FIM DA CLI ---

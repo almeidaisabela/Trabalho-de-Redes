@@ -5,7 +5,7 @@ class PeerTable:
     def __init__(self):
         self.peers = {}
         
-        # --- NOVO: Lê o tamanho da janela de RTT do config.json ---
+        # Lê o tamanho da janela de RTT do config.json
         self.rtt_window_size = 10
         if os.path.exists("config.json"):
             try:
